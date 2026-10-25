@@ -1,5 +1,7 @@
 # Jolly Mec 4HEAT for Home Assistant
 
+[![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+
 Control a pellet stove or insert fitted with a Tiemme Elettronica **4HEAT** Wi-Fi
 module (the platform behind the **Jolly Mec Connect** app) from Home Assistant.
 
@@ -31,8 +33,13 @@ The setup will tell you if the protocol does not match.
 
 ## Install
 
-1. In HACS, add this repository as a custom repository (category: Integration).
-2. Install "Jolly Mec 4HEAT" and restart Home Assistant.
+1. Add the repository to HACS, then install "Jolly Mec 4HEAT":
+
+   [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=vodhash&repository=jollymec-4heat&category=integration)
+
+   Or do it by hand: HACS > three-dot menu > Custom repositories, add
+   `https://github.com/vodhash/jollymec-4heat` (category: Integration), then install it.
+2. Restart Home Assistant.
 3. Settings > Devices & Services > Add Integration > Jolly Mec 4HEAT.
 4. Enter:
    - **Device Id** and **PIN**: from the app, myJOLLY MEC tab (default PIN `000000`).
