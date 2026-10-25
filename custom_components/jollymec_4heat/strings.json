@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter the device Id and PIN from the app's myJOLLY MEC tab, and your myJOLLY MEC account.",
+        "data": {
+          "device_id": "Device Id",
+          "pin": "PIN",
+          "email": "Account email",
+          "password": "Account password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the 4HEAT cloud.",
+      "invalid_auth": "Account email or password rejected.",
+      "unsupported_protocol": "This device does not use the 2ways protocol, which is the only one supported."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  }
+}

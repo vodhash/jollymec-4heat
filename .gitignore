@@ -1,0 +1,15 @@
+# captures and dumps
+*.pcap
+*.xapk
+*.apk
+filemap.json
+summary.json
+dumps/
+
+# secrets
+.env
+config-user.map
+
+# python
+__pycache__/
+*.pyc

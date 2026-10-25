@@ -1,0 +1,12 @@
+{
+  "domain": "jollymec_4heat",
+  "name": "Jolly Mec 4HEAT",
+  "codeowners": ["@vodhash"],
+  "config_flow": true,
+  "documentation": "https://github.com/vodhash/jollymec-4heat",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/vodhash/jollymec-4heat/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
