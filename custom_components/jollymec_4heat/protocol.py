@@ -28,6 +28,25 @@ def _slug(text: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", text.lower())).strip("_")
 
 
+_POWER_LEVEL = re.compile(r"P(\d+)$")
+
+
+def _relabel_power(label: str, silent: bool) -> str:
+    """Map the generic P<n> enum labels to what the stove and its remote show.
+
+    Combustion (the vendor "silent" power, gest_potenze cod 505) shows SIL for
+    level 1 and shifts the rest down by one; the other powers just drop the P
+    prefix. OFF, Auto and the selector labels are not P<n> and pass through.
+    """
+    match = _POWER_LEVEL.fullmatch(label)
+    if not match:
+        return label
+    level = int(match.group(1))
+    if silent:
+        return "SIL" if level == 1 else str(level - 1)
+    return str(level)
+
+
 def decode_frame(frame: str) -> dict:
     """Decode one hex value frame; byte 0 is the type, rest is type specific."""
     kind = int(frame[0:2], 16)
@@ -146,7 +165,7 @@ class StoveState:
     readings: dict[str, Reading] = field(default_factory=dict)
 
 
-def _parse_menu_params(filemap: dict) -> tuple[MenuParam, ...]:
+def _parse_menu_params(filemap: dict, silent_commands: frozenset[str]) -> tuple[MenuParam, ...]:
     params = []
     for entry in filemap.get("comandi_menu", []):
         comando = entry.get("comando")
@@ -154,8 +173,14 @@ def _parse_menu_params(filemap: dict) -> tuple[MenuParam, ...]:
             continue
         name = entry.get("descrizione_en") or entry.get("descrizione_it") or comando
         cenums = entry.get("cenums")
+        silent = comando.upper() in silent_commands
         options = (
-            {item["val"]: (item.get("descrizione_en") or str(item["val"])) for item in cenums}
+            {
+                item["val"]: _relabel_power(
+                    item.get("descrizione_en") or str(item["val"]), silent
+                )
+                for item in cenums
+            }
             if cenums
             else None
         )
@@ -185,10 +210,15 @@ def parse_device_map(filemap: dict) -> DeviceMap:
     }
     errors = tuple(error.get("descrizione_en") or "" for error in filemap.get("codici_errori", []))
     on_off = filemap.get("comandi_on_off", {})
+    silent_commands = frozenset(
+        (power.get("lett_pot") or "").upper()
+        for power in filemap.get("gest_potenze", [])
+        if power.get("cod_comando") == 505 and power.get("lett_pot")
+    )
     return DeviceMap(
         protocol=filemap.get("comunicazione", ""),
         registers=tuple(registers),
-        menu_params=_parse_menu_params(filemap),
+        menu_params=_parse_menu_params(filemap, silent_commands),
         states=states,
         errors=errors,
         setpoint_comando=(filemap.get("comandi_term_princ") or {}).get("comando") or None,

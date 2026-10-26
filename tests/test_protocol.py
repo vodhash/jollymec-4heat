@@ -82,7 +82,7 @@ def test_command_power():
     assert protocol.command_power(device_map, False) == ["2WC", "1", "05050000"]
 
 
-def test_parse_menu_params():
+def test_parse_menu_params_relabels_power():
     params = protocol._parse_menu_params(
         {
             "comandi_menu": [
@@ -93,17 +93,53 @@ def test_parse_menu_params():
                     "visible": True,
                     "cenums": [
                         {"val": 1, "descrizione_en": "P1"},
+                        {"val": 2, "descrizione_en": "P2"},
+                        {"val": 7, "descrizione_en": "Auto"},
+                    ],
+                },
+                {
+                    "comando": "030E0266",
+                    "descrizione_en": "Canalization",
+                    "visible": False,
+                    "cenums": [
+                        {"val": 0, "descrizione_en": "OFF"},
+                        {"val": 1, "descrizione_en": "P1"},
                         {"val": 7, "descrizione_en": "Auto"},
                     ],
                 },
                 {"comando": "03120058", "descrizione_en": "Remote Room 1", "visible": False},
             ]
+        },
+        frozenset({"030E016C"}),
+    )
+    assert [p.comando for p in params] == ["030E016C", "030E0266", "03120058"]
+    # combustion (silent power): level 1 is SIL, the rest shift down, OFF/Auto pass through
+    assert params[0].options == {1: "SIL", 2: "1", 7: "Auto"}
+    assert (params[0].key, params[0].visible) == ("combustion", True)
+    # other powers only drop the P prefix
+    assert params[1].options == {0: "OFF", 1: "1", 7: "Auto"}
+    assert params[2].options is None
+
+
+def test_parse_device_map_marks_combustion_silent():
+    device_map = protocol.parse_device_map(
+        {
+            "comunicazione": "2ways",
+            "comandi_menu": [
+                {
+                    "comando": "030E016C",
+                    "descrizione_en": "Combustion",
+                    "visible": True,
+                    "cenums": [
+                        {"val": 1, "descrizione_en": "P1"},
+                        {"val": 2, "descrizione_en": "P2"},
+                    ],
+                }
+            ],
+            "gest_potenze": [{"cod_comando": 505, "lett_pot": "030E016C"}],
         }
     )
-    assert [p.comando for p in params] == ["030E016C", "03120058"]
-    assert params[0].options == {1: "P1", 7: "Auto"}
-    assert (params[0].key, params[0].visible) == ("combustion", True)
-    assert params[1].options is None
+    assert device_map.menu_params[0].options == {1: "SIL", 2: "1"}
 
 
 def test_decode_summary():
