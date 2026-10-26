@@ -24,7 +24,12 @@ from .entity import JollyMec4HeatEntity
 from .protocol import command_power, command_write
 
 STATE_OFF = 0
+STATE_EXTINGUISHING = 7
 STATE_STANDBY = 11
+
+# Off, or shutting down toward off: the card reads OFF here so pressing Arret gives
+# immediate feedback during the several minute extinguishing cycle.
+_OFF_STATES = (STATE_OFF, STATE_EXTINGUISHING)
 
 
 async def async_setup_entry(
@@ -63,12 +68,12 @@ class StoveClimate(JollyMec4HeatEntity, ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode:
-        return HVACMode.OFF if self.coordinator.data.state_code == STATE_OFF else HVACMode.HEAT
+        return HVACMode.OFF if self.coordinator.data.state_code in _OFF_STATES else HVACMode.HEAT
 
     @property
     def hvac_action(self) -> HVACAction:
         code = self.coordinator.data.state_code
-        if code == STATE_OFF:
+        if code in _OFF_STATES:
             return HVACAction.OFF
         if code == STATE_STANDBY:
             return HVACAction.IDLE

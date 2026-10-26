@@ -148,8 +148,8 @@ field (`aggiornacomando2w`). For a type-`12` frame `12 005A vvvv mmmm MMMM …`:
 e.g. setpoint 21 °C → `0512005A0015000A00280000000100`. **Validated on hardware**:
 POST returned 200 and `summary` reflected setpoint 20 → 21 within ~30 s.
 
-ON/OFF (`05040000` / `05050000`) not yet exercised on hardware, but same transport
-and opcode as the validated setpoint write.
+ON/OFF (`05040000` / `05050000`) validated on hardware: OFF took the stove from
+MODULATION (6) to EXTINGUISHING (7) within 30 s and on to OFF; ON is symmetric.
 
 ### Menu parameters (settable)
 
@@ -175,8 +175,11 @@ in `comandi_log`, so their live value and bounds come from `summary`):
 - `030E0231` temperature source selector — enum Local/Remote/Local-Remote, hidden
 - `03120058` / `03120059` remote room 1 / 2 — numeric, hidden
 
-Only the setpoint (type `12`) has been exercised on hardware; the other types share
-the same transport and opcode but are not yet validated with a live write.
+Validated on hardware: the setpoint (type `12`) and the combustion power (type `0E`,
+`030E016C`, P2 -> P3 -> P2, applied and read back within ~40-60 s). All settable menu
+parameters on this device are type `0E` (enums) or `12` (remote rooms), so both write
+encoders are confirmed live. Types `01`, `06`, `22` are implemented from the app but
+not exercised here.
 
 ## Open items
 
