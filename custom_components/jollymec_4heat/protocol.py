@@ -16,6 +16,12 @@ PROTOCOL_2WAYS = "2ways"
 
 _FLUE_REGISTER_SUFFIX = "FFFF"
 
+# 4HEAT state_code groups (documented in the SM208/SM209 manuals). Any code not
+# listed is an active heating phase: ignition 1-4 and 30-34, run 5/6/13, recover 10.
+STATES_OFF = frozenset({0, 7})     # off, or extinguishing toward off
+STATES_FAULT = frozenset({8, 9})   # safety mode, block
+STATES_IDLE = frozenset({11})      # standby: on but the heat request is satisfied
+
 
 def _signed16(value: int) -> int:
     return value - 65536 if value > 32767 else value
@@ -135,7 +141,7 @@ class DeviceMap:
     registers: tuple[RegisterSpec, ...]
     menu_params: tuple[MenuParam, ...]
     states: dict[int, str]
-    errors: tuple[str, ...]
+    errors: dict[int, str]
     setpoint_comando: str | None
     power_on: str
     power_off: str
@@ -191,6 +197,17 @@ def _parse_menu_params(filemap: dict, silent_commands: frozenset[str]) -> tuple[
     return tuple(params)
 
 
+def _error_label(entry: dict) -> str:
+    """Human label for one codici_errori entry: the "ErNN" code plus its meaning.
+
+    The device only fills descrizione with the bare code; the readable text lives in
+    the info_<lang> fields, which this device populates even where the manual does not.
+    """
+    code = entry.get("descrizione_en") or entry.get("descrizione_it") or f"Er{entry.get('cod', 0):02d}"
+    info = entry.get("info_en") or entry.get("info_it") or ""
+    return f"{code} ({info})" if info and info.upper() != "SYSTEM OK" else code
+
+
 def parse_device_map(filemap: dict) -> DeviceMap:
     registers = []
     for entry in filemap.get("comandi_log", []):
@@ -209,7 +226,11 @@ def parse_device_map(filemap: dict) -> DeviceMap:
         for state in filemap.get("lingue_stati", [])
         if state.get("val") is not None
     }
-    errors = tuple(error.get("descrizione_en") or "" for error in filemap.get("codici_errori", []))
+    errors = {
+        entry["cod"]: _error_label(entry)
+        for entry in filemap.get("codici_errori", [])
+        if entry.get("cod")  # skip cod 0 (SYSTEM OK): no alarm
+    }
     on_off = filemap.get("comandi_on_off", {})
     silent_commands = frozenset(
         (power.get("lett_pot") or "").upper()
@@ -265,7 +286,7 @@ def decode_summary(device_map: DeviceMap, summary: dict) -> StoveState:
         if spec.comando.upper().endswith(_FLUE_REGISTER_SUFFIX):
             flue = _scale(decoded["value"], spec.multiplier, decimals)
 
-    error = device_map.errors[error_code] if error_code < len(device_map.errors) else None
+    error = device_map.errors.get(error_code) or f"Er{error_code:02d}" if error_code else None
     firmware = f"{summary.get('FirmwareVersion', '')}.{summary.get('FirmwareRevision', '')}".strip(".")
     return StoveState(
         online=bool(summary.get("IsOnline")),
@@ -275,7 +296,7 @@ def decode_summary(device_map: DeviceMap, summary: dict) -> StoveState:
         state_code=state_code,
         state=device_map.states.get(state_code, str(state_code)),
         error_code=error_code,
-        error=error or None,
+        error=error,
         room_temperature=room,
         flue_temperature=flue,
         setpoint=setpoint,

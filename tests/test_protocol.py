@@ -152,7 +152,7 @@ def test_decode_summary():
         ),
         menu_params=(),
         states={0: "OFF", 11: "STANDBY"},
-        errors=("----", "Er01"),
+        errors={1: "Er01 (High voltage safety 1)"},
         setpoint_comando="0312005A",
         power_on="05040000",
         power_off="05050000",
@@ -170,7 +170,7 @@ def test_decode_summary():
     state = protocol.decode_summary(device_map, summary)
     assert state.online is True
     assert state.state == "STANDBY"
-    assert state.error == "----"
+    assert state.error is None  # error_code 0 means no alarm
     assert state.room_temperature == 20
     assert state.flue_temperature == 29
     assert (state.setpoint, state.setpoint_min, state.setpoint_max) == (20, 10, 40)
@@ -201,3 +201,47 @@ def test_optimistic_value_times_out():
     opt = protocol.OptimisticValue(timeout=-1)
     opt.set(5)
     assert opt.resolve(1) == 1  # past deadline -> fall back to reality
+
+
+def test_error_map_keyed_by_cod_with_meaning():
+    device_map = protocol.parse_device_map(
+        {
+            "comunicazione": "2ways",
+            "codici_errori": [
+                {"cod": 0, "descrizione_en": "----", "info_en": "SYSTEM OK"},
+                {"cod": 3, "descrizione_en": "Er03", "info_en": "Low flue temperature"},
+                {"cod": 81, "descrizione_en": "Er81", "info_en": "Motherboard overtemperature"},
+            ],
+        }
+    )
+    # keyed by cod (not list position), SYSTEM OK dropped, meaning appended
+    assert device_map.errors == {
+        3: "Er03 (Low flue temperature)",
+        81: "Er81 (Motherboard overtemperature)",
+    }
+
+
+def test_decode_summary_resolves_high_error_code():
+    # A high code like 81 broke the old position-indexed lookup (out of range).
+    device_map = protocol.DeviceMap(
+        protocol="2ways",
+        registers=(protocol.RegisterSpec("0310", "mainvalues", "MAINVALUES", None, 1),),
+        menu_params=(),
+        states={5: "RUN MODE"},
+        errors={81: "Er81 (Motherboard overtemperature)"},
+        setpoint_comando=None,
+        power_on="",
+        power_off="",
+        unblock="",
+    )
+    main_err = MAIN[:10] + "05" + "51" + MAIN[14:]  # state 5, error code 0x51 = 81
+    summary = {"IsOnline": True, "LastMessageReceived": json.dumps({"Values": [main_err]})}
+    state = protocol.decode_summary(device_map, summary)
+    assert state.state == "RUN MODE"
+    assert state.error == "Er81 (Motherboard overtemperature)"
+
+
+def test_state_groups_are_disjoint():
+    assert not (protocol.STATES_OFF & protocol.STATES_FAULT)
+    assert not (protocol.STATES_OFF & protocol.STATES_IDLE)
+    assert not (protocol.STATES_FAULT & protocol.STATES_IDLE)
