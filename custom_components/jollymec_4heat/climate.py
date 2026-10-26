@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import JollyMec4HeatConfigEntry
 from .entity import JollyMec4HeatEntity
-from .protocol import command_power, command_write
+from .protocol import OptimisticValue, command_power, command_write
 
 STATE_OFF = 0
 STATE_EXTINGUISHING = 7
@@ -49,6 +49,8 @@ class StoveClimate(JollyMec4HeatEntity, ClimateEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, "thermostat")
+        self._optimistic_temp = OptimisticValue()
+        self._optimistic_mode = OptimisticValue()
 
     @property
     def current_temperature(self) -> float | None:
@@ -56,7 +58,7 @@ class StoveClimate(JollyMec4HeatEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        return self.coordinator.data.setpoint
+        return self._optimistic_temp.resolve(self.coordinator.data.setpoint)
 
     @property
     def min_temp(self) -> float:
@@ -68,7 +70,8 @@ class StoveClimate(JollyMec4HeatEntity, ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode:
-        return HVACMode.OFF if self.coordinator.data.state_code in _OFF_STATES else HVACMode.HEAT
+        actual = HVACMode.OFF if self.coordinator.data.state_code in _OFF_STATES else HVACMode.HEAT
+        return self._optimistic_mode.resolve(actual)
 
     @property
     def hvac_action(self) -> HVACAction:
@@ -86,10 +89,15 @@ class StoveClimate(JollyMec4HeatEntity, ClimateEntity):
             return
         # shortcut: integer setpoint (multiplier 1, no decimals); scale here if a
         # future device reports a fractional setpoint.
-        await self.coordinator.api.async_send_command(command_write(frame, int(temperature)))
+        value = int(temperature)
+        self._optimistic_temp.set(value)
+        self.async_write_ha_state()
+        await self.coordinator.api.async_send_command(command_write(frame, value))
         await self.coordinator.async_request_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        self._optimistic_mode.set(hvac_mode)
+        self.async_write_ha_state()
         await self.coordinator.api.async_send_command(
             command_power(self.coordinator.device_map, hvac_mode == HVACMode.HEAT)
         )

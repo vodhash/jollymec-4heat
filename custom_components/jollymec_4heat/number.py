@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import JollyMec4HeatConfigEntry
 from .entity import JollyMec4HeatEntity
-from .protocol import MenuParam, command_write
+from .protocol import MenuParam, OptimisticValue, command_write
 
 
 async def async_setup_entry(
@@ -38,6 +38,7 @@ class MenuNumber(JollyMec4HeatEntity, NumberEntity):
         self._param = param
         self._attr_name = param.name
         self._attr_entity_registry_enabled_default = param.visible
+        self._optimistic = OptimisticValue()
 
     def _reading(self):
         return self.coordinator.data.readings.get(self._param.comando.upper())
@@ -59,11 +60,16 @@ class MenuNumber(JollyMec4HeatEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:
         reading = self._reading()
-        return reading.value if reading else None
+        if reading is None:
+            return None
+        return self._optimistic.resolve(reading.value)
 
     async def async_set_native_value(self, value: float) -> None:
         reading = self._reading()
         if reading is None:
             return
-        await self.coordinator.api.async_send_command(command_write(reading.frame, int(value)))
+        ivalue = int(value)
+        self._optimistic.set(ivalue)
+        self.async_write_ha_state()
+        await self.coordinator.api.async_send_command(command_write(reading.frame, ivalue))
         await self.coordinator.async_request_refresh()

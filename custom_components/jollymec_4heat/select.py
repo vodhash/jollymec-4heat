@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import JollyMec4HeatConfigEntry
 from .entity import JollyMec4HeatEntity
-from .protocol import MenuParam, command_write
+from .protocol import MenuParam, OptimisticValue, command_write
 
 
 async def async_setup_entry(
@@ -40,6 +40,7 @@ class MenuSelect(JollyMec4HeatEntity, SelectEntity):
         self._attr_name = param.name
         self._attr_options = list(self._label_by_value.values())
         self._attr_entity_registry_enabled_default = param.visible
+        self._optimistic = OptimisticValue()
 
     def _reading(self):
         return self.coordinator.data.readings.get(self._param.comando.upper())
@@ -51,13 +52,16 @@ class MenuSelect(JollyMec4HeatEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         reading = self._reading()
-        return self._label_by_value.get(int(reading.value)) if reading else None
+        if reading is None:
+            return None
+        return self._label_by_value.get(self._optimistic.resolve(int(reading.value)))
 
     async def async_select_option(self, option: str) -> None:
         reading = self._reading()
         if reading is None or option not in self._value_by_label:
             return
-        await self.coordinator.api.async_send_command(
-            command_write(reading.frame, self._value_by_label[option])
-        )
+        value = self._value_by_label[option]
+        self._optimistic.set(value)
+        self.async_write_ha_state()
+        await self.coordinator.api.async_send_command(command_write(reading.frame, value))
         await self.coordinator.async_request_refresh()

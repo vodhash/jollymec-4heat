@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 
 PROTOCOL_2WAYS = "2ways"
@@ -314,3 +315,31 @@ def command_unblock(device_map: DeviceMap) -> list[str]:
 
 def command_write(frame: str, value: int) -> list[str]:
     return ["2WC", "1", _write_frame(frame, value)]
+
+
+class OptimisticValue:
+    """Holds a just-written value so a cloud-polled entity shows it immediately.
+
+    Writes take one or two module polls (~60 s each) to appear in the summary, so
+    without this the entity snaps back to the stale reading in between. The value is
+    kept until the reading matches it or a timeout passes, so a rejected or clamped
+    write still surfaces.
+    """
+
+    def __init__(self, timeout: float = 180.0) -> None:
+        self._timeout = timeout
+        self._value: object = None
+        self._deadline = 0.0
+
+    def set(self, value: object) -> None:
+        self._value = value
+        self._deadline = time.monotonic() + self._timeout
+
+    def resolve(self, actual: object) -> object:
+        """Return what to display: the pending value, or the real reading once caught up."""
+        if self._value is None:
+            return actual
+        if actual == self._value or time.monotonic() > self._deadline:
+            self._value = None
+            return actual
+        return self._value

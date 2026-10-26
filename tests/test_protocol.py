@@ -185,3 +185,19 @@ if __name__ == "__main__":
         if name.startswith("test_") and callable(fn):
             fn()
             print(f"{name} ok")
+
+
+def test_optimistic_value_holds_until_confirmed():
+    opt = protocol.OptimisticValue(timeout=1000)
+    assert opt.resolve(1) == 1  # nothing pending -> actual reading
+    opt.set(5)
+    assert opt.resolve(1) == 5  # device not caught up -> show the pending value
+    assert opt.resolve(1) == 5
+    assert opt.resolve(5) == 5  # device confirms -> clears
+    assert opt.resolve(1) == 1  # back to the real reading
+
+
+def test_optimistic_value_times_out():
+    opt = protocol.OptimisticValue(timeout=-1)
+    opt.set(5)
+    assert opt.resolve(1) == 1  # past deadline -> fall back to reality
