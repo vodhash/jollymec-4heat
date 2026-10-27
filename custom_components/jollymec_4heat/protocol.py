@@ -197,18 +197,29 @@ def _parse_menu_params(filemap: dict, silent_commands: frozenset[str]) -> tuple[
     return tuple(params)
 
 
-def _error_label(entry: dict) -> str:
+def _localized(entry: dict, prefix: str, language: str) -> str:
+    """Pick entry[{prefix}_{language}], falling back to English then Italian."""
+    return (
+        entry.get(f"{prefix}_{language}")
+        or entry.get(f"{prefix}_en")
+        or entry.get(f"{prefix}_it")
+        or ""
+    )
+
+
+def _error_label(entry: dict, language: str) -> str:
     """Human label for one codici_errori entry: the "ErNN" code plus its meaning.
 
     The device only fills descrizione with the bare code; the readable text lives in
     the info_<lang> fields, which this device populates even where the manual does not.
     """
-    code = entry.get("descrizione_en") or entry.get("descrizione_it") or f"Er{entry.get('cod', 0):02d}"
-    info = entry.get("info_en") or entry.get("info_it") or ""
+    code = _localized(entry, "descrizione", language) or f"Er{entry.get('cod', 0):02d}"
+    info = _localized(entry, "info", language)
     return f"{code} ({info})" if info and info.upper() != "SYSTEM OK" else code
 
 
-def parse_device_map(filemap: dict) -> DeviceMap:
+def parse_device_map(filemap: dict, language: str = "en") -> DeviceMap:
+    language = (language or "en").split("-")[0].lower()
     registers = []
     for entry in filemap.get("comandi_log", []):
         if not entry.get("flag_server"):
@@ -222,12 +233,12 @@ def parse_device_map(filemap: dict) -> DeviceMap:
         registers.append(RegisterSpec(entry["comando"], _slug(name) or entry["comando"],
                                       name, entry.get("unita") or None, multiplier))
     states = {
-        state["val"]: state.get("descrizione_en") or state.get("descrizione_it") or str(state["val"])
+        state["val"]: _localized(state, "descrizione", language) or str(state["val"])
         for state in filemap.get("lingue_stati", [])
         if state.get("val") is not None
     }
     errors = {
-        entry["cod"]: _error_label(entry)
+        entry["cod"]: _error_label(entry, language)
         for entry in filemap.get("codici_errori", [])
         if entry.get("cod")  # skip cod 0 (SYSTEM OK): no alarm
     }

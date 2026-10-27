@@ -241,6 +241,27 @@ def test_decode_summary_resolves_high_error_code():
     assert state.error == "Er81 (Motherboard overtemperature)"
 
 
+def test_parse_device_map_localizes_states_and_errors():
+    filemap = {
+        "comunicazione": "2ways",
+        "lingue_stati": [
+            {"val": 5, "descrizione_en": "RUN MODE", "descrizione_fr": "En Chauffe"},
+            {"val": 7, "descrizione_en": "EXTINGUISHING", "descrizione_fr": "Extinction"},
+            {"val": 99, "descrizione_en": "ONLY ENGLISH"},  # no FR -> falls back
+        ],
+        "codici_errori": [
+            {"cod": 12, "descrizione_en": "Er12", "info_en": "Ignition failed",
+             "info_fr": "Allumage manqué"},
+        ],
+    }
+    fr = protocol.parse_device_map(filemap, "fr-FR")  # region suffix stripped
+    assert fr.states == {5: "En Chauffe", 7: "Extinction", 99: "ONLY ENGLISH"}
+    assert fr.errors == {12: "Er12 (Allumage manqué)"}
+    en = protocol.parse_device_map(filemap)  # default English
+    assert en.states[5] == "RUN MODE"
+    assert en.errors[12] == "Er12 (Ignition failed)"
+
+
 def test_state_groups_are_disjoint():
     assert not (protocol.STATES_OFF & protocol.STATES_FAULT)
     assert not (protocol.STATES_OFF & protocol.STATES_IDLE)
