@@ -32,7 +32,7 @@ class JollyMec4HeatCoordinator(DataUpdateCoordinator[StoveState]):
             filemap = await self.api.async_get_filemap()
         except JollyMec4HeatError as err:
             raise UpdateFailed(str(err)) from err
-        self.device_map = parse_device_map(filemap)
+        self.device_map = parse_device_map(filemap, self.hass.config.language)
         self.product_code = filemap.get("codice_prod", "")
         if not self.device_map.is_supported:
             raise UpdateFailed(

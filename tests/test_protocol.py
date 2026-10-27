@@ -180,6 +180,14 @@ def test_decode_summary():
     assert (reading.value, reading.minimum, reading.maximum, reading.frame) == (20, 10, 40, SETPOINT)
 
 
+def test_command_pacer_spaces_writes():
+    pacer = protocol.CommandPacer(interval=60)
+    assert pacer.schedule(1000) == 1000  # first write goes out immediately
+    assert pacer.schedule(1000) == 1060  # second waits one poll interval
+    assert pacer.schedule(1000) == 1120  # third another interval, even if all queued at once
+    assert pacer.schedule(5000) == 5000  # long gap since last write -> no wait
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
@@ -239,6 +247,27 @@ def test_decode_summary_resolves_high_error_code():
     state = protocol.decode_summary(device_map, summary)
     assert state.state == "RUN MODE"
     assert state.error == "Er81 (Motherboard overtemperature)"
+
+
+def test_parse_device_map_localizes_states_and_errors():
+    filemap = {
+        "comunicazione": "2ways",
+        "lingue_stati": [
+            {"val": 5, "descrizione_en": "RUN MODE", "descrizione_fr": "En Chauffe"},
+            {"val": 7, "descrizione_en": "EXTINGUISHING", "descrizione_fr": "Extinction"},
+            {"val": 99, "descrizione_en": "ONLY ENGLISH"},  # no FR -> falls back
+        ],
+        "codici_errori": [
+            {"cod": 12, "descrizione_en": "Er12", "info_en": "Ignition failed",
+             "info_fr": "Allumage manqué"},
+        ],
+    }
+    fr = protocol.parse_device_map(filemap, "fr-FR")  # region suffix stripped
+    assert fr.states == {5: "En Chauffe", 7: "Extinction", 99: "ONLY ENGLISH"}
+    assert fr.errors == {12: "Er12 (Allumage manqué)"}
+    en = protocol.parse_device_map(filemap)  # default English
+    assert en.states[5] == "RUN MODE"
+    assert en.errors[12] == "Er12 (Ignition failed)"
 
 
 def test_state_groups_are_disjoint():
