@@ -6,13 +6,19 @@ from the OWIN password grant, obtained once and refreshed before it expires.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 
+from .protocol import CommandPacer
+
 BASE = "https://wifi4heat.azurewebsites.net"
 _TIMEOUT = ClientTimeout(total=30)
 _TOKEN_REFRESH_MARGIN = 600
+# The module polls one queued command per cycle (~60 s) and keeps only the last,
+# so writes are spaced by just over one poll or they clobber each other.
+_COMMAND_INTERVAL = 65.0
 
 
 class JollyMec4HeatError(Exception):
@@ -39,6 +45,8 @@ class JollyMec4HeatApi:
         self._password = password
         self._token: str | None = None
         self._token_expiry = 0.0
+        self._command_lock = asyncio.Lock()
+        self._pacer = CommandPacer(_COMMAND_INTERVAL)
 
     async def async_get_summary(self) -> dict:
         url = f"{BASE}/api/devices/summary"
@@ -52,22 +60,29 @@ class JollyMec4HeatApi:
         return await self._get_json(url, params={"pin": self._pin, "id": self._device_id})
 
     async def async_send_command(self, comando: list[str]) -> None:
-        token = await self._async_token()
-        url = f"{BASE}/api/devices/command"
-        body = {"id": self._device_id, "comando": comando}
-        headers = {"Authorization": f"Bearer {token}"}
-        try:
-            async with self._session.post(
-                url, json=body, headers=headers, timeout=_TIMEOUT
-            ) as response:
-                response.raise_for_status()
-        except ClientResponseError as err:
-            if err.status == 401:
-                self._token = None
-                raise AuthError("token rejected by command endpoint") from err
-            raise JollyMec4HeatError(f"command failed: {err.status}") from err
-        except ClientError as err:
-            raise JollyMec4HeatError("command request failed") from err
+        # Serialise and space writes: the cloud mailbox holds one command and the
+        # module polls it every ~60 s, so back-to-back writes would overwrite each
+        # other. One sender at a time, each waiting for its reserved slot.
+        async with self._command_lock:
+            delay = self._pacer.schedule(time.monotonic()) - time.monotonic()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            token = await self._async_token()
+            url = f"{BASE}/api/devices/command"
+            body = {"id": self._device_id, "comando": comando}
+            headers = {"Authorization": f"Bearer {token}"}
+            try:
+                async with self._session.post(
+                    url, json=body, headers=headers, timeout=_TIMEOUT
+                ) as response:
+                    response.raise_for_status()
+            except ClientResponseError as err:
+                if err.status == 401:
+                    self._token = None
+                    raise AuthError("token rejected by command endpoint") from err
+                raise JollyMec4HeatError(f"command failed: {err.status}") from err
+            except ClientError as err:
+                raise JollyMec4HeatError("command request failed") from err
 
     async def async_validate(self) -> dict:
         """Confirm device, account and map during config; return the summary."""

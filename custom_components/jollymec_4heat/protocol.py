@@ -375,3 +375,23 @@ class OptimisticValue:
             self._value = None
             return actual
         return self._value
+
+
+class CommandPacer:
+    """Spaces command writes so none is lost in the 4HEAT one-command mailbox.
+
+    The module polls a single queued command per cycle (~60 s) and keeps only the
+    last one written before it polls; a second write sent too soon overwrites the
+    first. schedule() returns the earliest time the next write may go out and
+    reserves the following slot, so callers serialise behind one lock and sleep
+    until the returned time. now is passed in (time.monotonic) so this stays pure.
+    """
+
+    def __init__(self, interval: float) -> None:
+        self._interval = interval
+        self._next = 0.0
+
+    def schedule(self, now: float) -> float:
+        send_at = max(now, self._next)
+        self._next = send_at + self._interval
+        return send_at
