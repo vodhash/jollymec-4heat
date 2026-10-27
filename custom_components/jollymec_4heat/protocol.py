@@ -352,13 +352,15 @@ def command_write(frame: str, value: int) -> list[str]:
 class OptimisticValue:
     """Holds a just-written value so a cloud-polled entity shows it immediately.
 
-    Writes take one or two module polls (~60 s each) to appear in the summary, so
-    without this the entity snaps back to the stale reading in between. The value is
-    kept until the reading matches it or a timeout passes, so a rejected or clamped
-    write still surfaces.
+    Writes take one or two module polls (~60 s each) to appear in the summary, and
+    several queued writes are serialised ~65 s apart (see CommandPacer), so a later
+    one only echoes back after a few minutes. The value is kept until the reading
+    matches it or this timeout passes, so a rejected or clamped write still surfaces.
+    shortcut: 300 s covers up to ~4 writes queued together plus the device echo;
+    raise it in step with the pacer spacing if deeper batches snap back early.
     """
 
-    def __init__(self, timeout: float = 180.0) -> None:
+    def __init__(self, timeout: float = 300.0) -> None:
         self._timeout = timeout
         self._value: object = None
         self._deadline = 0.0
